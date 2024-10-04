@@ -105,6 +105,7 @@ from pandas.core.dtypes.common import (
     is_sequence,
     needs_i8_conversion,
     pandas_dtype,
+    registry,
 )
 from pandas.core.dtypes.concat import concat_compat
 from pandas.core.dtypes.dtypes import (
@@ -4355,7 +4356,23 @@ class DataFrame(NDFrame, OpsMixin):
         ensure homogeneity.
         """
         value, refs = self._sanitize_column(value)
-
+        # Check if can be converted to ExtensionArry
+        # ndarray of dtype = object and all values of the same type
+        if (
+            isinstance(value, np.ndarray)
+            and value.dtype is np.dtype("O")
+            and len({type(val) for val in value})
+        ):
+            # now search de registry for the proper EA
+            ea_type = registry.find(value[0])
+            if ea_type is None:
+                # nothing found, give an other try
+                ea_type = next(
+                    ea for ea in registry.dtypes if ea.type == type(value[0])
+                )
+            if ea_type:
+                # Got an EA type, retrieve the EA and construct from it
+                value = ea_type.construct_array_type()(value)
         if (
             key in self.columns
             and value.ndim == 1
